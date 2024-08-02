@@ -1,70 +1,59 @@
-from fabric.api import env
-from fabric.operations import local
-from fabric.api import put, run
-import os
-from datetime import datetime
+#!/usr/bin/env python3
+"""
+Fabric script that creates and distributes an archive to your web servers.
+"""
 
-# Update with your server IP and username
+from fabric.api import local, put, run, env
+from datetime import datetime
+import os
+
 env.hosts = ['197.248.5.24']
-env.user = '<ncmovers>'
-env.key_filename = './my_ssh_private_key'  # Path to your SSH key
+env.user = 'ncmovers'
+env.key_filename = 'my_ssh_private_key'
 
 def do_pack():
-    """Creates a .tgz archive from the web_static folder."""
+    """Generates a .tgz archive from the web_static folder."""
     time_now = datetime.now()
-    archive_name = "web_static_{:04d}{:02d}{:02d}{:02d}{:02d}{:02d}.tgz".format(
-        time_now.year, time_now.month, time_now.day, time_now.hour, time_now.minute, time_now.second
-    )
-    local("mkdir -p versions")
-    result = local("tar -cvzf versions/{} web_static".format(archive_name), capture=True)
-
+    archive_path = f"versions/web_static_{time_now.strftime('%Y%m%d%H%M%S')}.tgz"
+    if not os.path.isdir("versions"):
+        local("mkdir -p versions")
+    result = local(f"tar -cvzf {archive_path} web_static", capture=True)
     if result.failed:
         return None
-    return "versions/{}".format(archive_name)
+    return archive_path
 
 def do_deploy(archive_path):
-    """Deploys the archive to the web servers."""
-    if not os.path.exists(archive_path):
+    """Distributes an archive to your web servers."""
+    if not os.path.isfile(archive_path):
         return False
 
-    # Extract the file name and base name
-    file_name = os.path.basename(archive_path)
-    base_name = file_name.split(".")[0]
-
-    # Define remote paths
-    remote_tmp_path = "/tmp/{}".format(file_name)
-    remote_release_dir = "/data/web_static/releases/{}/".format(base_name)
-
     try:
-        # Upload the archive to the /tmp/ directory on the web server
-        put(archive_path, remote_tmp_path)
+        # Upload archive
+        put(archive_path, '/tmp/')
+        
+        # Extract file name without extension
+        archive_name = os.path.basename(archive_path)
+        file_name = archive_name.split(".")[0]
+        
+        # Create directory and extract archive
+        run(f"mkdir -p /data/web_static/releases/{file_name}/")
+        run(f"tar -xzf /tmp/{archive_name} -C /data/web_static/releases/{file_name}/")
+        run(f"rm /tmp/{archive_name}")
 
-        # Uncompress the archive to the folder /data/web_static/releases/<archive filename without extension> on the web server
-        run("mkdir -p {}".format(remote_release_dir))
-        run("tar -xzf {} -C {}".format(remote_tmp_path, remote_release_dir))
-
-        # Delete the archive from the web server
-        run("rm {}".format(remote_tmp_path))
-
-        # Move the files from the web_static folder to the release folder
-        run("mv {0}web_static/* {0}".format(remote_release_dir))
-        run("rm -rf {}web_static".format(remote_release_dir))
-
-        # Delete the symbolic link /data/web_static/current from the web server
-        run("rm -rf /data/web_static/current")
-
-        # Create a new symbolic link /data/web_static/current on the web server
-        run("ln -s {} /data/web_static/current".format(remote_release_dir))
-
+        # Move contents and clean up
+        run(f"mv /data/web_static/releases/{file_name}/web_static/* /data/web_static/releases/{file_name}/")
+        run(f"rm -rf /data/web_static/releases/{file_name}/web_static")
+        run(f"rm -rf /data/web_static/current")
+        run(f"ln -s /data/web_static/releases/{file_name}/ /data/web_static/current")
         return True
-    except:
+    except Exception as e:
+        print(f"Deployment failed: {e}")
         return False
 
 def deploy():
-    """Creates and distributes an archive to web servers."""
+    """Creates and deploys an archive."""
     archive_path = do_pack()
-    if not archive_path:
+    if archive_path is None:
         return False
-
     return do_deploy(archive_path)
 

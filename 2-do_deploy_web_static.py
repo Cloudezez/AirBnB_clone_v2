@@ -1,46 +1,43 @@
-from fabric.api import env, put, run
-import os
+from fabric.api import local, put, run, env
+from fabric.contrib.files import exists
 
-# Update with your server IPs and username
+# Set up the environment for Fabric
 env.hosts = ['197.248.5.24']
 env.user = 'ncmovers'
-env.key_filename = './my_ssh_private_key'
+env.key_filename = 'my_ssh_private_key'
 
 def do_deploy(archive_path):
-    """Distributes an archive to your web servers."""
-    if not os.path.exists(archive_path):
+    """Distributes an archive to web servers"""
+    # Check if the archive exists locally
+    if not exists(archive_path):
+        print(f"Archive {archive_path} does not exist")
         return False
 
-    # Extract the file name and base name
-    file_name = os.path.basename(archive_path)
-    base_name = file_name.split(".")[0]
-
-    # Define remote paths
-    remote_tmp_path = "/tmp/{}".format(file_name)
-    remote_release_dir = "/data/web_static/releases/{}/".format(base_name)
-
     try:
-        # Upload the archive to the /tmp/ directory on the web server
-        put(archive_path, remote_tmp_path)
+        # Upload the archive to /tmp/
+        put(archive_path, '/tmp/')
+        
+        # Extract the filename without extension
+        file_name = archive_path.split('/')[-1]
+        file_name_no_ext = file_name.split('.')[0]
+        
+        # Create the release directory
+        release_dir = f'/data/web_static/releases/{file_name_no_ext}/'
+        run(f'mkdir -p {release_dir}')
+        
+        # Uncompress the archive
+        run(f'tar -xzf /tmp/{file_name} -C {release_dir}')
+        
+        # Delete the archive from /tmp/
+        run(f'rm /tmp/{file_name}')
+        
+        # Remove old symbolic link and create a new one
+        run('rm -rf /data/web_static/current')
+        run(f'ln -s {release_dir} /data/web_static/current')
 
-        # Uncompress the archive to the folder /data/web_static/releases/<archive filename without extension> on the web server
-        run("mkdir -p {}".format(remote_release_dir))
-        run("tar -xzf {} -C {}".format(remote_tmp_path, remote_release_dir))
-
-        # Delete the archive from the web server
-        run("rm {}".format(remote_tmp_path))
-
-        # Move the files from the web_static folder to the release folder
-        run("mv {0}web_static/* {0}".format(remote_release_dir))
-        run("rm -rf {}web_static".format(remote_release_dir))
-
-        # Delete the symbolic link /data/web_static/current from the web server
-        run("rm -rf /data/web_static/current")
-
-        # Create a new symbolic link /data/web_static/current on the web server
-        run("ln -s {} /data/web_static/current".format(remote_release_dir))
-
+        print("New version deployed!")
         return True
-    except:
+    except Exception as e:
+        print(f"Deployment failed: {e}")
         return False
 

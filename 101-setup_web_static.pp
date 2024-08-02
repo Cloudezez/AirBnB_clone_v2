@@ -1,3 +1,5 @@
+# Puppet manifest to set up the web_static directory structure
+
 # Ensure the /data directory exists
 file { '/data':
   ensure => directory,
@@ -47,8 +49,8 @@ server {
 
 # Enable the nginx configuration
 file { '/etc/nginx/sites-enabled/web_static':
-  ensure  => link,
-  target  => '/etc/nginx/sites-available/web_static',
+  ensure => link,
+  target => '/etc/nginx/sites-available/web_static',
   require => File['/etc/nginx/sites-available/web_static'],
 }
 
